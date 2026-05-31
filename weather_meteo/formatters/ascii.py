@@ -230,6 +230,21 @@ def _colored_sparkline(hourly: list[HourlyEntry]) -> Text:
     return spark
 
 
+def _sparkline_scale() -> Text:
+    # "0     ^6    ^12   ^18   ^24"
+    scale = Text()
+    scale.append("0", style="dim")
+    scale.append("     ", style="dim")
+    scale.append("^6", style="dim")
+    scale.append("    ", style="dim")
+    scale.append("^12", style="dim")
+    scale.append("   ", style="dim")
+    scale.append("^18", style="dim")
+    scale.append("   ", style="dim")
+    scale.append("^24", style="dim")
+    return scale
+
+
 def format_week(
     daily: list[DailyEntry],
     location_label: str,
@@ -288,6 +303,9 @@ def format_week(
             Text(f"{d.precipitation_probability_max}%", style=pc),
             spark,
         )
+
+    # Add time scale footer row
+    table.add_row("", "", "", "", "", _sparkline_scale(), end_section=True)
 
     return _render_rich(table)
 
