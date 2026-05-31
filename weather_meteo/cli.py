@@ -9,6 +9,20 @@ from weather_meteo.location import detect_current_location, resolve_location
 from weather_meteo.models import FORECAST_MODELS
 
 
+def _fetch_multi_model_hourly(
+    config: Config,
+    loc,
+    models: list[str],
+    hours: int = 24,
+) -> dict[str, list]:
+    """Fetch hourly data from multiple models. Returns {model_name: [HourlyEntry]}."""
+    result = {}
+    for model_name in models:
+        backend = get_backend(config.backend, config.unit, model_name)
+        result[model_name] = backend.get_hourly(loc, hours=hours)
+    return result
+
+
 def _resolve(ctx: click.Context, loc_name: str | None = None) -> tuple:
     config = ctx.obj["config"]
     fmt_name = ctx.obj["format"] or config.format
@@ -52,11 +66,14 @@ def main(
         return
     ctx.ensure_object(dict)
     config = load_config()
+    models: list[str] = []
     if model:
-        config.model = model
+        models = [m.strip() for m in model.split(",")]
+        config.model = models[0]
     ctx.obj["config"] = config
     ctx.obj["location"] = location
     ctx.obj["format"] = fmt
+    ctx.obj["models"] = models
     if ctx.invoked_subcommand is None:
         ctx.invoke(now)
 
@@ -65,22 +82,34 @@ def main(
 @click.pass_context
 def now(ctx: click.Context) -> None:
     """Current weather + 24h forecast (default command)."""
+    models = ctx.obj.get("models", [])
     config, formatter, backend = _resolve(ctx, ctx.obj["location"])
     loc = resolve_location(ctx.obj["location"], config)
     current = backend.get_current(loc)
     current.location_label = loc.label
-    hourly = backend.get_hourly(loc, hours=24)
-    click.echo(formatter.format_now(current, unit=config.unit, hourly=hourly))
+    if len(models) > 1:
+        model_data = _fetch_multi_model_hourly(config, loc, models, hours=24)
+        click.echo(formatter.format_now(current, unit=config.unit))
+        click.echo()
+        click.echo(formatter.format_model_compare(model_data, loc.label, unit=config.unit, hours=24))
+    else:
+        hourly = backend.get_hourly(loc, hours=24)
+        click.echo(formatter.format_now(current, unit=config.unit, hourly=hourly))
 
 
 @main.command()
 @click.pass_context
 def hourly(ctx: click.Context) -> None:
     """Next 24 hours hourly forecast."""
+    models = ctx.obj.get("models", [])
     config, formatter, backend = _resolve(ctx, ctx.obj["location"])
     loc = resolve_location(ctx.obj["location"], config)
-    entries = backend.get_hourly(loc, hours=24)
-    click.echo(formatter.format_hourly(entries, loc.label, title="Next 24h", unit=config.unit))
+    if len(models) > 1:
+        model_data = _fetch_multi_model_hourly(config, loc, models, hours=24)
+        click.echo(formatter.format_model_compare(model_data, loc.label, unit=config.unit, hours=24))
+    else:
+        entries = backend.get_hourly(loc, hours=24)
+        click.echo(formatter.format_hourly(entries, loc.label, title="Next 24h", unit=config.unit))
 
 
 @main.command()
@@ -99,12 +128,17 @@ def week(ctx: click.Context, detail: bool) -> None:
 @click.pass_context
 def run(ctx: click.Context, hours: int) -> None:
     """Run check: weather for next N hours."""
+    models = ctx.obj.get("models", [])
     config, formatter, backend = _resolve(ctx, ctx.obj["location"])
     loc = resolve_location(ctx.obj["location"], config)
-    entries = backend.get_hourly(loc, hours=hours)
-    click.echo(formatter.format_hourly(
-        entries, loc.label, title=f"Run Check (next {hours}h)", unit=config.unit,
-    ))
+    if len(models) > 1:
+        model_data = _fetch_multi_model_hourly(config, loc, models, hours=hours)
+        click.echo(formatter.format_model_compare(model_data, loc.label, unit=config.unit, hours=hours))
+    else:
+        entries = backend.get_hourly(loc, hours=hours)
+        click.echo(formatter.format_hourly(
+            entries, loc.label, title=f"Run Check (next {hours}h)", unit=config.unit,
+        ))
 
 
 @main.command()

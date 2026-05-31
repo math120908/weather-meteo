@@ -59,6 +59,21 @@ def format_week(
     })
 
 
+def format_model_compare(
+    model_data: dict[str, list[HourlyEntry]],
+    location_label: str,
+    unit: str = "metric",
+    hours: int = 24,
+) -> str:
+    return _dump({
+        "location": location_label,
+        "models": {
+            name: [asdict(e) for e in entries]
+            for name, entries in model_data.items()
+        },
+    })
+
+
 def format_compare(
     currents: list[CurrentWeather],
     unit: str = "metric",

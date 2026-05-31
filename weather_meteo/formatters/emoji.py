@@ -104,6 +104,31 @@ def format_week(
     return "\n".join(lines)
 
 
+def format_model_compare(
+    model_data: dict[str, list[HourlyEntry]],
+    location_label: str,
+    unit: str = "metric",
+    hours: int = 24,
+) -> str:
+    t_suf, w_suf = _unit_suffix(unit)
+    model_names = list(model_data.keys())
+    header = f"\U0001f4cd {location_label} — Model Comparison (next {hours}h)"
+    col_header = "  Time  " + "".join(f"{m:>14}" for m in model_names)
+    lines = [header, "", col_header]
+    first_entries = model_data[model_names[0]]
+    for i, e in enumerate(first_entries):
+        parts = [f"  {e.time.strftime('%H:%M')}"]
+        for m in model_names:
+            entries_m = model_data[m]
+            if i < len(entries_m):
+                prob = entries_m[i].precipitation_probability
+                parts.append(f"\u2614{prob:>3}%")
+            else:
+                parts.append("     -")
+        lines.append("  ".join(parts))
+    return "\n".join(lines)
+
+
 def format_compare(
     currents: list[CurrentWeather],
     unit: str = "metric",

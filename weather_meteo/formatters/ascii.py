@@ -62,9 +62,9 @@ def _wind_color(speed: float) -> str:
     return "red"
 
 
-def _render_rich(renderable) -> str:
+def _render_rich(renderable, width: int = 100) -> str:
     buf = StringIO()
-    console = Console(file=buf, force_terminal=True, width=100)
+    console = Console(file=buf, force_terminal=True, width=width)
     console.print(renderable)
     return buf.getvalue().rstrip()
 
@@ -143,6 +143,55 @@ def format_now(
         parts.append(_render_rich(table))
 
     return "\n".join(parts)
+
+
+def format_model_compare(
+    model_data: dict[str, list[HourlyEntry]],
+    location_label: str,
+    unit: str = "metric",
+    hours: int = 24,
+) -> str:
+    t_suf, w_suf = _unit_suffix(unit)
+    model_names = list(model_data.keys())
+
+    title = f"Model Comparison — {location_label} (next {hours}h)"
+
+    table = Table(
+        title=title,
+        title_style="bold",
+        border_style="dim",
+        show_header=True,
+        header_style="bold dim",
+        pad_edge=False,
+    )
+    table.add_column("Time", style="dim", no_wrap=True)
+    table.add_column("Temp", justify="right", no_wrap=True)
+    table.add_column("Wind", no_wrap=True)
+    for m in model_names:
+        table.add_column(m, justify="right", min_width=14, no_wrap=True)
+
+    # Use first model for temp/wind (they're similar across models)
+    # Show rain probability from each model as columns
+    first_entries = model_data[model_names[0]]
+    for i, e in enumerate(first_entries):
+        row: list[str | Text] = [
+            e.time.strftime("%H:%M"),
+            Text(f"{e.temperature:.0f}{t_suf}", style=_temp_color(e.temperature)),
+            Text(f"{wind_arrow(e.wind_direction)} {e.wind_speed:.0f}{w_suf}", style=_wind_color(e.wind_speed)),
+        ]
+        for m in model_names:
+            entries_m = model_data[m]
+            if i < len(entries_m):
+                prob = entries_m[i].precipitation_probability
+                pc = _prob_color(prob)
+                bar = _prob_bar(prob)
+                row.append(Text(f"{prob}% {bar}", style=pc))
+            else:
+                row.append(Text("-", style="dim"))
+        table.add_row(*row)
+
+    render_width = 40 + 16 * len(model_names)
+    return _render_rich(table, width=max(100, render_width))
 
 
 def format_hourly(
