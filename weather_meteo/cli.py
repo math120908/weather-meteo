@@ -6,24 +6,54 @@ from weather_meteo.api import get_backend
 from weather_meteo.config import Config, load_config, save_config, edit_config, CONFIG_FILE
 from weather_meteo.formatters import get_formatter
 from weather_meteo.location import detect_current_location, resolve_location
+from weather_meteo.models import FORECAST_MODELS
 
 
-def _resolve(ctx: click.Context) -> tuple:
+def _resolve(ctx: click.Context, loc_name: str | None = None) -> tuple:
     config = ctx.obj["config"]
     fmt_name = ctx.obj["format"] or config.format
     formatter = get_formatter(fmt_name)
-    backend = get_backend(config.backend, config.unit)
+    # Per-location model override > global default
+    model = config.model
+    if loc_name and loc_name in config.locations:
+        loc_model = config.locations[loc_name].model
+        if loc_model:
+            model = loc_model
+    elif config.default_location in config.locations:
+        loc_model = config.locations[config.default_location].model
+        if loc_model:
+            model = loc_model
+    backend = get_backend(config.backend, config.unit, model)
     return config, formatter, backend
 
 
 @click.group(invoke_without_command=True)
 @click.option("--location", "-l", default=None, help="Location alias or city name.")
 @click.option("--format", "-f", "fmt", default=None, type=click.Choice(["ascii", "emoji", "json"]), help="Output format.")
+@click.option("--model", "-m", default=None, help="Forecast model (overrides config).")
+@click.option("--list-models", is_flag=True, help="List available forecast models.")
 @click.pass_context
-def main(ctx: click.Context, location: str | None, fmt: str | None) -> None:
+def main(
+    ctx: click.Context,
+    location: str | None,
+    fmt: str | None,
+    model: str | None,
+    list_models: bool,
+) -> None:
     """Weather CLI powered by Open-Meteo."""
+    if list_models:
+        click.echo("Available forecast models:\n")
+        for model_id, desc in FORECAST_MODELS:
+            click.echo(f"  {model_id:<35} {desc}")
+        click.echo("\nSet globally: defaults.model in config")
+        click.echo("Set per-location: locations.<alias>.model in config")
+        click.echo("Override: weather-meteo --model <id> ...")
+        ctx.exit()
+        return
     ctx.ensure_object(dict)
     config = load_config()
+    if model:
+        config.model = model
     ctx.obj["config"] = config
     ctx.obj["location"] = location
     ctx.obj["format"] = fmt
@@ -35,7 +65,7 @@ def main(ctx: click.Context, location: str | None, fmt: str | None) -> None:
 @click.pass_context
 def now(ctx: click.Context) -> None:
     """Current weather + 24h forecast (default command)."""
-    config, formatter, backend = _resolve(ctx)
+    config, formatter, backend = _resolve(ctx, ctx.obj["location"])
     loc = resolve_location(ctx.obj["location"], config)
     current = backend.get_current(loc)
     current.location_label = loc.label
@@ -47,7 +77,7 @@ def now(ctx: click.Context) -> None:
 @click.pass_context
 def hourly(ctx: click.Context) -> None:
     """Next 24 hours hourly forecast."""
-    config, formatter, backend = _resolve(ctx)
+    config, formatter, backend = _resolve(ctx, ctx.obj["location"])
     loc = resolve_location(ctx.obj["location"], config)
     entries = backend.get_hourly(loc, hours=24)
     click.echo(formatter.format_hourly(entries, loc.label, title="Next 24h", unit=config.unit))
@@ -58,7 +88,7 @@ def hourly(ctx: click.Context) -> None:
 @click.pass_context
 def week(ctx: click.Context, detail: bool) -> None:
     """7-day forecast with rain heatmap."""
-    config, formatter, backend = _resolve(ctx)
+    config, formatter, backend = _resolve(ctx, ctx.obj["location"])
     loc = resolve_location(ctx.obj["location"], config)
     daily = backend.get_daily(loc, days=7, detail=detail)
     click.echo(formatter.format_week(daily, loc.label, unit=config.unit, detail=detail))
@@ -69,7 +99,7 @@ def week(ctx: click.Context, detail: bool) -> None:
 @click.pass_context
 def run(ctx: click.Context, hours: int) -> None:
     """Run check: weather for next N hours."""
-    config, formatter, backend = _resolve(ctx)
+    config, formatter, backend = _resolve(ctx, ctx.obj["location"])
     loc = resolve_location(ctx.obj["location"], config)
     entries = backend.get_hourly(loc, hours=hours)
     click.echo(formatter.format_hourly(
@@ -82,9 +112,12 @@ def run(ctx: click.Context, hours: int) -> None:
 @click.pass_context
 def compare(ctx: click.Context, locations: tuple[str, ...]) -> None:
     """Compare weather across multiple locations."""
-    config, formatter, backend = _resolve(ctx)
+    config = ctx.obj["config"]
+    fmt_name = ctx.obj["format"] or config.format
+    formatter = get_formatter(fmt_name)
     currents = []
     for loc_name in locations:
+        _, _, backend = _resolve(ctx, loc_name)
         loc = resolve_location(loc_name, config)
         current = backend.get_current(loc)
         current.location_label = loc.label
@@ -97,7 +130,7 @@ def compare(ctx: click.Context, locations: tuple[str, ...]) -> None:
 @click.pass_context
 def history(ctx: click.Context, target_date) -> None:
     """Historical weather for a past date."""
-    config, formatter, backend = _resolve(ctx)
+    config, formatter, backend = _resolve(ctx, ctx.obj["location"])
     loc = resolve_location(ctx.obj["location"], config)
     d = target_date.date() if hasattr(target_date, "date") else target_date
     entries = backend.get_history(loc, d)

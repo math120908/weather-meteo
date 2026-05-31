@@ -2,6 +2,19 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 
+FORECAST_MODELS = [
+    ("best_match", "Auto-select best model (default)"),
+    ("ecmwf_ifs025", "ECMWF IFS 0.25 — global, high quality"),
+    ("gfs_seamless", "GFS — US model, global coverage"),
+    ("icon_seamless", "ICON (DWD) — good for Europe"),
+    ("gem_seamless", "GEM — Canadian model, global"),
+    ("jma_seamless", "JMA — Japanese model, good for Asia"),
+    ("ukmo_seamless", "UK Met Office — good for UK/Ireland"),
+    ("knmi_harmonie_arome_europe", "KNMI HARMONIE — high-res Europe"),
+    ("metno_nordic", "MET Norway Nordic — Scandinavia only"),
+    ("bom_access_global", "BOM ACCESS — Australia"),
+]
+
 WIND_ARROWS = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"]
 
 RAIN_SPARK = ["▁", "▂", "▃", "▅", "▇", "█"]

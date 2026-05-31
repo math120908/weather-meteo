@@ -13,12 +13,15 @@ ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
 
 class OpenMeteoBackend(WeatherBackend):
-    def __init__(self, unit: str = "metric") -> None:
+    def __init__(self, unit: str = "metric", model: str = "best_match") -> None:
         self._unit = unit
+        self._model = model
         self._extra_params: dict[str, str] = {}
         if unit == "imperial":
             self._extra_params["wind_speed_unit"] = "mph"
             self._extra_params["temperature_unit"] = "fahrenheit"
+        if model and model != "best_match":
+            self._extra_params["models"] = model
 
     def _get(self, url: str, params: dict) -> dict:
         params = {**params, **self._extra_params, "timezone": "auto"}
