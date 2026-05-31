@@ -33,17 +33,33 @@ def _unit_suffix(unit: str) -> tuple[str, str]:
     return "\u00b0C", "km/h"
 
 
-def format_now(current: CurrentWeather, unit: str = "metric") -> str:
+def format_now(
+    current: CurrentWeather,
+    unit: str = "metric",
+    hourly: list[HourlyEntry] | None = None,
+) -> str:
     t_suf, w_suf = _unit_suffix(unit)
     e = _emoji(current.weather_code)
     arrow = wind_arrow(current.wind_direction)
-    return (
+    lines = [
         f"{e} {current.location_label}: "
         f"{current.temperature:.0f}{t_suf} "
         f"\U0001f4a8{arrow}{current.wind_speed:.0f}{w_suf} "
         f"\U0001f4a7{current.precipitation:.1f}mm "
         f"\U0001f4a6{current.humidity}%"
-    )
+    ]
+    if hourly:
+        lines.append("")
+        for h in hourly:
+            harrow = wind_arrow(h.wind_direction)
+            prob = f"\u2614{h.precipitation_probability}%" if h.precipitation_probability >= 0 else ""
+            lines.append(
+                f"  {h.time.strftime('%H:%M')} "
+                f"\U0001f321\ufe0f{h.temperature:.0f}{t_suf} "
+                f"\U0001f4a8{harrow}{h.wind_speed:.0f}{w_suf} "
+                f"{prob}"
+            )
+    return "\n".join(lines)
 
 
 def format_hourly(

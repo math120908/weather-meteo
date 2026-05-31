@@ -20,9 +20,15 @@ def _dump(obj) -> str:
     return json.dumps(obj, cls=_Encoder, indent=2, ensure_ascii=False)
 
 
-def format_now(current: CurrentWeather, unit: str = "metric") -> str:
+def format_now(
+    current: CurrentWeather,
+    unit: str = "metric",
+    hourly: list[HourlyEntry] | None = None,
+) -> str:
     d = asdict(current)
     d["weather_description"] = weather_description(current.weather_code)
+    if hourly:
+        d["hourly"] = [asdict(e) for e in hourly]
     return _dump(d)
 
 

@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from io import StringIO
+
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+
 from weather_meteo.models import (
     CurrentWeather,
     DailyEntry,
@@ -21,19 +28,121 @@ def _unit_suffix(unit: str) -> tuple[str, str]:
     return "\u00b0C", "km/h"
 
 
-def format_now(current: CurrentWeather, unit: str = "metric") -> str:
+def _temp_color(temp: float) -> str:
+    if temp <= 0:
+        return "bright_cyan"
+    if temp <= 10:
+        return "cyan"
+    if temp <= 18:
+        return "green"
+    if temp <= 25:
+        return "yellow"
+    if temp <= 32:
+        return "bright_red"
+    return "red"
+
+
+def _prob_color(prob: int) -> str:
+    if prob <= 20:
+        return "green"
+    if prob <= 50:
+        return "yellow"
+    if prob <= 75:
+        return "bright_red"
+    return "red"
+
+
+def _wind_color(speed: float) -> str:
+    if speed <= 15:
+        return "green"
+    if speed <= 30:
+        return "yellow"
+    if speed <= 50:
+        return "bright_red"
+    return "red"
+
+
+def _render_rich(renderable) -> str:
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=True, width=100)
+    console.print(renderable)
+    return buf.getvalue().rstrip()
+
+
+def format_now(
+    current: CurrentWeather,
+    unit: str = "metric",
+    hourly: list[HourlyEntry] | None = None,
+) -> str:
     t_suf, w_suf = _unit_suffix(unit)
-    arrow = wind_arrow(current.wind_direction)
     desc = weather_description(current.weather_code)
-    feels = f" (\u2248 {current.feels_like:.0f}{t_suf})" if current.feels_like != current.temperature else ""
-    return (
-        f"{current.location_label} | "
-        f"{current.temperature:.0f}{t_suf}{feels} | "
-        f"{arrow} {current.wind_speed:.0f} {w_suf} | "
-        f"{current.precipitation:.1f}mm | "
-        f"{current.humidity}% | "
-        f"{desc}"
+    arrow = wind_arrow(current.wind_direction)
+    time_str = current.time.strftime("%a %d %b %H:%M")
+
+    # Current conditions panel
+    temp_c = _temp_color(current.temperature)
+    wind_c = _wind_color(current.wind_speed)
+
+    current_text = Text()
+    current_text.append(f"  {desc}\n\n", style="bold")
+    current_text.append(f"  Temp     ", style="dim")
+    current_text.append(f"{current.temperature:.0f}{t_suf}", style=f"bold {temp_c}")
+    if current.feels_like != current.temperature:
+        current_text.append(f"  (feels {current.feels_like:.0f}{t_suf})", style="dim")
+    current_text.append(f"\n  Wind     ", style="dim")
+    current_text.append(f"{arrow} {current.wind_speed:.0f} {w_suf}", style=wind_c)
+    current_text.append(f"  (gust {current.wind_gusts:.0f})", style="dim")
+    current_text.append(f"\n  Rain     ", style="dim")
+    current_text.append(f"{current.precipitation:.1f} mm\n", style="blue")
+    current_text.append(f"  Humidity ", style="dim")
+    current_text.append(f"{current.humidity}%", style="cyan")
+
+    panel = Panel(
+        current_text,
+        title=f"[bold]{current.location_label}[/bold]  {time_str}",
+        border_style="blue",
+        width=50,
     )
+
+    parts = [_render_rich(panel)]
+
+    # 24h forecast table
+    if hourly:
+        table = Table(
+            title="Next 24h",
+            title_style="bold",
+            border_style="dim",
+            show_header=True,
+            header_style="bold dim",
+            pad_edge=False,
+            width=60,
+        )
+        table.add_column("Time", style="dim", width=5)
+        table.add_column("Temp", justify="right", width=5)
+        table.add_column("Wind", width=10)
+        table.add_column("Rain", justify="right", width=6)
+        table.add_column("Prob", justify="right", width=4)
+        table.add_column("", width=10)
+
+        for e in hourly:
+            earrow = wind_arrow(e.wind_direction)
+            tc = _temp_color(e.temperature)
+            pc = _prob_color(e.precipitation_probability)
+            wc = _wind_color(e.wind_speed)
+            bar = _prob_bar(e.precipitation_probability)
+
+            table.add_row(
+                e.time.strftime("%H:%M"),
+                Text(f"{e.temperature:.0f}{t_suf}", style=tc),
+                Text(f"{earrow} {e.wind_speed:.0f}{w_suf}", style=wc),
+                Text(f"{e.precipitation:.1f}mm", style="blue" if e.precipitation > 0 else "dim"),
+                Text(f"{e.precipitation_probability}%", style=pc),
+                Text(bar, style=pc),
+            )
+
+        parts.append(_render_rich(table))
+
+    return "\n".join(parts)
 
 
 def format_hourly(

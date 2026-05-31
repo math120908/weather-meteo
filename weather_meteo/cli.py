@@ -34,12 +34,13 @@ def main(ctx: click.Context, location: str | None, fmt: str | None) -> None:
 @main.command()
 @click.pass_context
 def now(ctx: click.Context) -> None:
-    """Current weather (default command)."""
+    """Current weather + 24h forecast (default command)."""
     config, formatter, backend = _resolve(ctx)
     loc = resolve_location(ctx.obj["location"], config)
     current = backend.get_current(loc)
     current.location_label = loc.label
-    click.echo(formatter.format_now(current, unit=config.unit))
+    hourly = backend.get_hourly(loc, hours=24)
+    click.echo(formatter.format_now(current, unit=config.unit, hourly=hourly))
 
 
 @main.command()
