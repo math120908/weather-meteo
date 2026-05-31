@@ -1,0 +1,9 @@
+pyproject.toml
+weather_meteo/__init__.py
+weather_meteo/cli.py
+weather_meteo.egg-info/PKG-INFO
+weather_meteo.egg-info/SOURCES.txt
+weather_meteo.egg-info/dependency_links.txt
+weather_meteo.egg-info/entry_points.txt
+weather_meteo.egg-info/requires.txt
+weather_meteo.egg-info/top_level.txt
