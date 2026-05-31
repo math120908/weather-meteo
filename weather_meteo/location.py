@@ -19,21 +19,31 @@ def resolve_location(name: str | None, config: Config) -> LocationEntry:
 
 
 def _geocode(name: str) -> LocationEntry:
-    url = "https://geocoding-api.open-meteo.com/v1/search"
-    resp = httpx.get(url, params={"name": name, "count": 1}, timeout=10)
-    resp.raise_for_status()
-    data = resp.json()
-    results = data.get("results")
+    results = geocode_search(name, count=1)
     if not results:
         raise click.ClickException(f"Location not found: {name!r}")
-    r = results[0]
-    parts = [r.get("name", name)]
-    if r.get("admin1"):
-        parts.append(r["admin1"])
-    if r.get("country"):
-        parts.append(r["country"])
-    label = ", ".join(parts)
-    return LocationEntry(lat=r["latitude"], lon=r["longitude"], label=label)
+    return results[0]
+
+
+def geocode_search(name: str, count: int = 5) -> list[LocationEntry]:
+    """Search for locations by name, returning up to *count* results."""
+    url = "https://geocoding-api.open-meteo.com/v1/search"
+    resp = httpx.get(url, params={"name": name, "count": count}, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+    raw_results = data.get("results")
+    if not raw_results:
+        return []
+    entries: list[LocationEntry] = []
+    for r in raw_results:
+        parts = [r.get("name", name)]
+        if r.get("admin1"):
+            parts.append(r["admin1"])
+        if r.get("country"):
+            parts.append(r["country"])
+        label = ", ".join(parts)
+        entries.append(LocationEntry(lat=r["latitude"], lon=r["longitude"], label=label))
+    return entries
 
 
 def detect_current_location() -> LocationEntry:

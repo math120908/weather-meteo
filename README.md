@@ -17,12 +17,10 @@ pip install -e .
 
 ```bash
 weather-meteo config setup                   # interactive first-time setup
-weather-meteo                                # current weather (default location)
-weather-meteo hourly                         # next 24h hourly forecast
+weather-meteo                                # next 24h hourly forecast (default)
+weather-meteo hourly -H 6                    # next 6h only
 weather-meteo week                           # 7-day forecast with rain heatmap
 weather-meteo week --detail                  # 7-day with full hourly breakdown
-weather-meteo run                            # run check (next 6h)
-weather-meteo run --hours 3                  # run check (next 3h)
 weather-meteo compare sandymount taipei      # multi-location comparison
 weather-meteo history --date 2026-05-01      # historical weather
 ```
@@ -33,7 +31,7 @@ weather-meteo history --date 2026-05-01      # historical weather
 |------|-------|-------------|
 | `--location LOC` | `-l` | Location alias or city name |
 | `--format FMT` | `-f` | `ascii` (default), `emoji`, `json` |
-| `--hours N` | `-H` | Override hour range (for `run`) |
+| `--hours N` | `-H` | Hour range for `hourly` (default 24) |
 
 ## Config
 
@@ -57,7 +55,17 @@ locations:
     label: "Taipei"
 ```
 
-Manage with `weather-meteo config setup|edit|show`.
+Manage with `weather-meteo config setup|add|edit|show`.
+
+```bash
+# Add a location by searching
+weather-meteo config add --name home "dublin 2"
+#   [1] Dublin 2, Leinster, Ireland (53.33941, -6.25116)
+#   [2] Dublin, Leinster, Ireland (53.33306, -6.24889)
+#   ...
+#   Select [1]:
+# Added 'home' -> Dublin 2, Leinster, Ireland
+```
 
 ## Architecture
 
