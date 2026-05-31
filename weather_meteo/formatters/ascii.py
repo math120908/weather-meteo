@@ -223,7 +223,9 @@ def format_hourly(
 
 def _colored_sparkline(hourly: list[HourlyEntry]) -> Text:
     spark = Text()
-    for h in hourly:
+    for i, h in enumerate(hourly):
+        if i > 0 and i % 6 == 0:
+            spark.append(" ")
         char = rain_spark_char(h.precipitation_probability)
         color = _prob_color(h.precipitation_probability)
         spark.append(char, style=color)
@@ -231,17 +233,14 @@ def _colored_sparkline(hourly: list[HourlyEntry]) -> Text:
 
 
 def _sparkline_scale() -> Text:
-    # "0     ^6    ^12   ^18   ^24"
+    # Aligned with sparkline: 6 chars + space pattern
+    # "0     6     12    18    24"
     scale = Text()
-    scale.append("0", style="dim")
-    scale.append("     ", style="dim")
-    scale.append("^6", style="dim")
-    scale.append("    ", style="dim")
-    scale.append("^12", style="dim")
-    scale.append("   ", style="dim")
-    scale.append("^18", style="dim")
-    scale.append("   ", style="dim")
-    scale.append("^24", style="dim")
+    scale.append("0     ", style="dim")
+    scale.append(" 6    ", style="dim")
+    scale.append(" 12   ", style="dim")
+    scale.append(" 18   ", style="dim")
+    scale.append(" 24", style="dim")
     return scale
 
 
