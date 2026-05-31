@@ -112,12 +112,56 @@ def format_now(
     return "\n".join(parts)
 
 
+def _humidity_color(humidity: int) -> str:
+    if humidity <= 40:
+        return "yellow"
+    if humidity <= 70:
+        return "green"
+    if humidity <= 85:
+        return "cyan"
+    return "blue"
+
+
+def _uv_color(uv: float) -> str:
+    if uv <= 2:
+        return "green"
+    if uv <= 5:
+        return "yellow"
+    if uv <= 7:
+        return "bright_red"
+    return "red"
+
+
+def _visibility_km(meters: float) -> str:
+    km = meters / 1000
+    if km >= 10:
+        return f"{km:.0f}km"
+    return f"{km:.1f}km"
+
+
 def _build_hourly_table(
     entries: list[HourlyEntry],
     title: str,
     t_suf: str,
     w_suf: str,
 ) -> str:
+    full = entries and entries[0].humidity is not None
+    has_prob = entries and entries[0].precipitation_probability >= 0
+    has_uv = full and any(e.uv_index is not None for e in entries)
+    has_vis = full and any(e.visibility is not None for e in entries)
+
+    # Determine table width
+    if full:
+        width = 90
+        if has_prob:
+            width += 8
+        if has_uv:
+            width += 6
+        if has_vis:
+            width += 8
+    else:
+        width = 60
+
     table = Table(
         title=title,
         title_style="bold",
@@ -125,38 +169,58 @@ def _build_hourly_table(
         show_header=True,
         header_style="bold dim",
         pad_edge=False,
-        width=60,
+        width=width,
     )
     table.add_column("Time", style="dim", width=5)
     table.add_column("Temp", justify="right", width=5)
     table.add_column("Wind", width=10)
     table.add_column("Rain", justify="right", width=6)
-    table.add_column("Prob", justify="right", width=4)
-    table.add_column("", width=10)
+    if has_prob:
+        table.add_column("Prob", justify="right", width=4)
+    if full:
+        table.add_column("Hum", justify="right", width=4)
+        if has_uv:
+            table.add_column("UV", justify="right", width=3)
+        table.add_column("Cloud", justify="right", width=4)
+        table.add_column("Press", justify="right", width=6)
+        table.add_column("Dew", justify="right", width=5)
+        if has_vis:
+            table.add_column("Vis", justify="right", width=5)
+    elif has_prob:
+        table.add_column("", width=10)
 
     for e in entries:
         earrow = wind_arrow(e.wind_direction)
         tc = _temp_color(e.temperature)
         wc = _wind_color(e.wind_speed)
 
-        if e.precipitation_probability < 0:
-            prob_text = Text("-", style="dim")
-            bar_text = Text("")
-        else:
-            pc = _prob_color(e.precipitation_probability)
-            prob_text = Text(f"{e.precipitation_probability}%", style=pc)
-            bar_text = Text(_prob_bar(e.precipitation_probability), style=pc)
-
-        table.add_row(
+        row: list[str | Text] = [
             e.time.strftime("%H:%M"),
             Text(f"{e.temperature:.0f}{t_suf}", style=tc),
             Text(f"{earrow} {e.wind_speed:.0f}{w_suf}", style=wc),
             Text(f"{e.precipitation:.1f}mm", style="blue" if e.precipitation > 0 else "dim"),
-            prob_text,
-            bar_text,
-        )
+        ]
 
-    return _render_rich(table)
+        if has_prob:
+            pc = _prob_color(e.precipitation_probability)
+            row.append(Text(f"{e.precipitation_probability}%", style=pc))
+
+        if full:
+            row.append(Text(f"{e.humidity}%", style=_humidity_color(e.humidity or 0)))
+            if has_uv:
+                row.append(Text(f"{e.uv_index:.0f}" if e.uv_index is not None else "-", style=_uv_color(e.uv_index or 0)))
+            row.append(Text(f"{e.cloud_cover}%" if e.cloud_cover is not None else "-", style="dim"))
+            row.append(Text(f"{e.pressure:.0f}" if e.pressure is not None else "-", style="dim"))
+            row.append(Text(f"{e.dewpoint:.0f}{t_suf}" if e.dewpoint is not None else "-", style="cyan"))
+            if has_vis:
+                row.append(Text(_visibility_km(e.visibility) if e.visibility is not None else "-", style="dim"))
+        elif has_prob:
+            pc = _prob_color(e.precipitation_probability)
+            row.append(Text(_prob_bar(e.precipitation_probability), style=pc))
+
+        table.add_row(*row)
+
+    return _render_rich(table, width=width + 5)
 
 
 def format_model_compare(
@@ -264,6 +328,8 @@ def format_week(
                 parts.append(title)
         return "\n\n".join(parts)
 
+    full = daily and daily[0].sunrise is not None
+
     table = Table(
         title=f"{location_label} \u2014 7-Day Forecast",
         title_style="bold",
@@ -271,13 +337,16 @@ def format_week(
         show_header=True,
         header_style="bold dim",
         pad_edge=False,
-        width=80,
+        width=105 if full else 80,
     )
     table.add_column("Date", style="dim", no_wrap=True)
     table.add_column("Hi/Lo", justify="right", no_wrap=True)
     table.add_column("Wind", justify="right", no_wrap=True)
     table.add_column("Rain", justify="right", no_wrap=True)
     table.add_column("Prob", justify="right", no_wrap=True)
+    if full:
+        table.add_column("UV", justify="right", no_wrap=True)
+        table.add_column("Sun", no_wrap=True, min_width=11)
     table.add_column("Hourly Rain", no_wrap=True, min_width=24)
 
     for d in daily:
@@ -294,19 +363,39 @@ def format_week(
 
         spark = _colored_sparkline(d.hourly) if d.hourly else Text("")
 
-        table.add_row(
+        row: list[str | Text] = [
             date_str,
             hi_lo,
             Text(f"{d.wind_speed_max:.0f}{w_suf}", style=wc),
             Text(f"{d.precipitation_sum:.1f}mm", style="blue" if d.precipitation_sum > 0 else "dim"),
             Text(f"{d.precipitation_probability_max}%", style=pc),
-            spark,
-        )
+        ]
+        if full:
+            if d.uv_index_max is not None:
+                row.append(Text(f"{d.uv_index_max:.0f}", style=_uv_color(d.uv_index_max)))
+            else:
+                row.append(Text("-", style="dim"))
+            if d.sunrise and d.sunset:
+                rise = d.sunrise.strftime("%H:%M")
+                sset = d.sunset.strftime("%H:%M")
+                sun_text = Text()
+                sun_text.append(f"{rise}", style="yellow")
+                sun_text.append("-")
+                sun_text.append(f"{sset}", style="bright_red")
+                row.append(sun_text)
+            else:
+                row.append(Text("-", style="dim"))
+        row.append(spark)
+
+        table.add_row(*row)
 
     # Add time scale footer row
-    table.add_row("", "", "", "", "", _sparkline_scale(), end_section=True)
+    n_cols = 8 if full else 6
+    footer: list[str | Text] = [""] * (n_cols - 1)
+    footer.append(_sparkline_scale())
+    table.add_row(*footer, end_section=True)
 
-    return _render_rich(table)
+    return _render_rich(table, width=110 if full else 100)
 
 
 def format_compare(

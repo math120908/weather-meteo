@@ -96,6 +96,13 @@ class HourlyEntry:
     wind_direction: int
     precipitation: float
     precipitation_probability: int
+    # --full fields (None when not requested)
+    humidity: int | None = None
+    uv_index: float | None = None
+    visibility: float | None = None  # meters
+    pressure: float | None = None  # hPa
+    cloud_cover: int | None = None  # %
+    dewpoint: float | None = None
 
 
 @dataclass
@@ -108,3 +115,7 @@ class DailyEntry:
     wind_speed_max: float
     wind_gusts_max: float
     hourly: list[HourlyEntry] = field(default_factory=list)
+    # --full fields
+    sunrise: datetime | None = None
+    sunset: datetime | None = None
+    uv_index_max: float | None = None

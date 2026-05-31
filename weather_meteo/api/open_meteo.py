@@ -58,17 +58,27 @@ class OpenMeteoBackend(WeatherBackend):
             location_label=location.label,
         )
 
-    def get_hourly(self, location: LocationEntry, hours: int = 24) -> list[HourlyEntry]:
+    def get_hourly(self, location: LocationEntry, hours: int = 24, full: bool = False) -> list[HourlyEntry]:
+        fields = [
+            "temperature_2m",
+            "wind_speed_10m",
+            "wind_direction_10m",
+            "precipitation",
+            "precipitation_probability",
+        ]
+        if full:
+            fields += [
+                "relative_humidity_2m",
+                "uv_index",
+                "visibility",
+                "surface_pressure",
+                "cloud_cover",
+                "dewpoint_2m",
+            ]
         data = self._get(FORECAST_URL, {
             "latitude": location.lat,
             "longitude": location.lon,
-            "hourly": ",".join([
-                "temperature_2m",
-                "wind_speed_10m",
-                "wind_direction_10m",
-                "precipitation",
-                "precipitation_probability",
-            ]),
+            "hourly": ",".join(fields),
             "forecast_days": min((hours // 24) + 1, 16),
         })
         h = data["hourly"]
@@ -82,17 +92,36 @@ class OpenMeteoBackend(WeatherBackend):
                 continue
             if len(entries) >= hours:
                 break
-            entries.append(HourlyEntry(
+            entry = HourlyEntry(
                 time=t,
                 temperature=h["temperature_2m"][i],
                 wind_speed=h["wind_speed_10m"][i],
                 wind_direction=int(h["wind_direction_10m"][i]),
                 precipitation=h["precipitation"][i],
                 precipitation_probability=int(h["precipitation_probability"][i]),
-            ))
+            )
+            if full:
+                entry.humidity = int(h["relative_humidity_2m"][i])
+                entry.uv_index = h["uv_index"][i]
+                entry.visibility = h["visibility"][i]
+                entry.pressure = h["surface_pressure"][i]
+                entry.cloud_cover = int(h["cloud_cover"][i])
+                entry.dewpoint = h["dewpoint_2m"][i]
+            entries.append(entry)
         return entries
 
-    def get_daily(self, location: LocationEntry, days: int = 7, detail: bool = False) -> list[DailyEntry]:
+    def get_daily(self, location: LocationEntry, days: int = 7, detail: bool = False, full: bool = False) -> list[DailyEntry]:
+        daily_fields = [
+            "temperature_2m_max",
+            "temperature_2m_min",
+            "precipitation_sum",
+            "precipitation_probability_max",
+            "wind_speed_10m_max",
+            "wind_gusts_10m_max",
+        ]
+        if full:
+            daily_fields += ["sunrise", "sunset", "uv_index_max"]
+
         hourly_fields = ["precipitation_probability"]
         if detail:
             hourly_fields += [
@@ -101,17 +130,22 @@ class OpenMeteoBackend(WeatherBackend):
                 "wind_direction_10m",
                 "precipitation",
             ]
+        if full and detail:
+            hourly_fields += [
+                "relative_humidity_2m",
+                "uv_index",
+                "visibility",
+                "surface_pressure",
+                "cloud_cover",
+                "dewpoint_2m",
+            ]
+        # dedupe while preserving order
+        hourly_fields = list(dict.fromkeys(hourly_fields))
+
         data = self._get(FORECAST_URL, {
             "latitude": location.lat,
             "longitude": location.lon,
-            "daily": ",".join([
-                "temperature_2m_max",
-                "temperature_2m_min",
-                "precipitation_sum",
-                "precipitation_probability_max",
-                "wind_speed_10m_max",
-                "wind_gusts_10m_max",
-            ]),
+            "daily": ",".join(daily_fields),
             "hourly": ",".join(hourly_fields),
             "forecast_days": days,
         })
@@ -123,6 +157,12 @@ class OpenMeteoBackend(WeatherBackend):
         hourly_winds = h.get("wind_speed_10m", [])
         hourly_dirs = h.get("wind_direction_10m", [])
         hourly_precip = h.get("precipitation", [])
+        hourly_humidity = h.get("relative_humidity_2m", [])
+        hourly_uv = h.get("uv_index", [])
+        hourly_vis = h.get("visibility", [])
+        hourly_pressure = h.get("surface_pressure", [])
+        hourly_cloud = h.get("cloud_cover", [])
+        hourly_dew = h.get("dewpoint_2m", [])
 
         entries = []
         for i in range(len(d["time"])):
@@ -131,15 +171,24 @@ class OpenMeteoBackend(WeatherBackend):
             for j, t_str in enumerate(hourly_times):
                 t = datetime.fromisoformat(t_str)
                 if t.date() == day_date and j < len(hourly_probs):
-                    day_hourly.append(HourlyEntry(
+                    entry = HourlyEntry(
                         time=t,
                         temperature=hourly_temps[j] if hourly_temps else 0,
                         wind_speed=hourly_winds[j] if hourly_winds else 0,
                         wind_direction=int(hourly_dirs[j]) if hourly_dirs else 0,
                         precipitation=hourly_precip[j] if hourly_precip else 0,
                         precipitation_probability=int(hourly_probs[j]),
-                    ))
-            entries.append(DailyEntry(
+                    )
+                    if full and detail and hourly_humidity:
+                        entry.humidity = int(hourly_humidity[j])
+                        entry.uv_index = hourly_uv[j] if hourly_uv else None
+                        entry.visibility = hourly_vis[j] if hourly_vis else None
+                        entry.pressure = hourly_pressure[j] if hourly_pressure else None
+                        entry.cloud_cover = int(hourly_cloud[j]) if hourly_cloud else None
+                        entry.dewpoint = hourly_dew[j] if hourly_dew else None
+                    day_hourly.append(entry)
+
+            daily_entry = DailyEntry(
                 date=day_date,
                 temp_max=d["temperature_2m_max"][i],
                 temp_min=d["temperature_2m_min"][i],
@@ -148,31 +197,51 @@ class OpenMeteoBackend(WeatherBackend):
                 wind_speed_max=d["wind_speed_10m_max"][i],
                 wind_gusts_max=d["wind_gusts_10m_max"][i],
                 hourly=day_hourly,
-            ))
+            )
+            if full:
+                daily_entry.sunrise = datetime.fromisoformat(d["sunrise"][i])
+                daily_entry.sunset = datetime.fromisoformat(d["sunset"][i])
+                uv_raw = d["uv_index_max"][i]
+                daily_entry.uv_index_max = uv_raw if uv_raw is not None else None
+            entries.append(daily_entry)
         return entries
 
-    def get_history(self, location: LocationEntry, target_date: date) -> list[HourlyEntry]:
+    def get_history(self, location: LocationEntry, target_date: date, full: bool = False) -> list[HourlyEntry]:
+        fields = [
+            "temperature_2m",
+            "wind_speed_10m",
+            "wind_direction_10m",
+            "precipitation",
+        ]
+        if full:
+            fields += [
+                "relative_humidity_2m",
+                "surface_pressure",
+                "cloud_cover",
+                "dewpoint_2m",
+            ]
         data = self._get(ARCHIVE_URL, {
             "latitude": location.lat,
             "longitude": location.lon,
             "start_date": target_date.isoformat(),
             "end_date": target_date.isoformat(),
-            "hourly": ",".join([
-                "temperature_2m",
-                "wind_speed_10m",
-                "wind_direction_10m",
-                "precipitation",
-            ]),
+            "hourly": ",".join(fields),
         })
         h = data["hourly"]
         entries = []
         for i, time_str in enumerate(h["time"]):
-            entries.append(HourlyEntry(
+            entry = HourlyEntry(
                 time=datetime.fromisoformat(time_str),
                 temperature=h["temperature_2m"][i],
                 wind_speed=h["wind_speed_10m"][i],
                 wind_direction=int(h["wind_direction_10m"][i]),
                 precipitation=h["precipitation"][i],
                 precipitation_probability=-1,
-            ))
+            )
+            if full:
+                entry.humidity = int(h["relative_humidity_2m"][i])
+                entry.pressure = h["surface_pressure"][i]
+                entry.cloud_cover = int(h["cloud_cover"][i])
+                entry.dewpoint = h["dewpoint_2m"][i]
+            entries.append(entry)
         return entries

@@ -46,6 +46,7 @@ def _resolve(ctx: click.Context, loc_name: str | None = None) -> tuple:
 @click.option("--format", "-f", "fmt", default=None, type=click.Choice(["ascii", "emoji", "json"]), help="Output format.")
 @click.option("--model", "-m", default=None, help="Forecast model (overrides config).")
 @click.option("--list-models", is_flag=True, help="List available forecast models.")
+@click.option("--full", is_flag=True, help="Show extended weather data (humidity, UV, pressure, etc.).")
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -53,6 +54,7 @@ def main(
     fmt: str | None,
     model: str | None,
     list_models: bool,
+    full: bool,
 ) -> None:
     """Weather CLI powered by Open-Meteo."""
     if list_models:
@@ -74,6 +76,7 @@ def main(
     ctx.obj["location"] = location
     ctx.obj["format"] = fmt
     ctx.obj["models"] = models
+    ctx.obj["full"] = full
     if ctx.invoked_subcommand is None:
         ctx.invoke(hourly)
 
@@ -83,6 +86,7 @@ def main(
 @click.pass_context
 def hourly(ctx: click.Context, hours: int) -> None:
     """Hourly forecast (default command)."""
+    full = ctx.obj.get("full", False)
     models = ctx.obj.get("models", [])
     config, formatter, backend = _resolve(ctx, ctx.obj["location"])
     loc = resolve_location(ctx.obj["location"], config)
@@ -90,7 +94,7 @@ def hourly(ctx: click.Context, hours: int) -> None:
         model_data = _fetch_multi_model_hourly(config, loc, models, hours=hours)
         click.echo(formatter.format_model_compare(model_data, loc.label, unit=config.unit, hours=hours))
     else:
-        entries = backend.get_hourly(loc, hours=hours)
+        entries = backend.get_hourly(loc, hours=hours, full=full)
         click.echo(formatter.format_hourly(entries, loc.label, title=f"Next {hours}h", unit=config.unit))
 
 
@@ -99,9 +103,10 @@ def hourly(ctx: click.Context, hours: int) -> None:
 @click.pass_context
 def week(ctx: click.Context, detail: bool) -> None:
     """7-day forecast with rain heatmap."""
+    full = ctx.obj.get("full", False)
     config, formatter, backend = _resolve(ctx, ctx.obj["location"])
     loc = resolve_location(ctx.obj["location"], config)
-    daily = backend.get_daily(loc, days=7, detail=detail)
+    daily = backend.get_daily(loc, days=7, detail=detail, full=full)
     click.echo(formatter.format_week(daily, loc.label, unit=config.unit, detail=detail))
 
 
@@ -128,10 +133,11 @@ def compare(ctx: click.Context, locations: tuple[str, ...]) -> None:
 @click.pass_context
 def history(ctx: click.Context, target_date) -> None:
     """Historical weather for a past date."""
+    full = ctx.obj.get("full", False)
     config, formatter, backend = _resolve(ctx, ctx.obj["location"])
     loc = resolve_location(ctx.obj["location"], config)
     d = target_date.date() if hasattr(target_date, "date") else target_date
-    entries = backend.get_history(loc, d)
+    entries = backend.get_history(loc, d, full=full)
     click.echo(formatter.format_hourly(
         entries,
         loc.label,

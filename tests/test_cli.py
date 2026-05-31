@@ -74,12 +74,12 @@ class TestListModels:
         assert "ecmwf_ifs025" in result.output
 
 
-class TestNowCommand:
-    """'now' subcommand smoke test."""
+class TestHourlyCommand:
+    """'hourly' subcommand smoke test."""
 
     @patch("weather_meteo.cli.load_config")
     @patch("weather_meteo.cli.get_backend")
-    def test_now_json(
+    def test_hourly_json(
         self,
         mock_get_backend: MagicMock,
         mock_load: MagicMock,
@@ -88,11 +88,10 @@ class TestNowCommand:
     ) -> None:
         mock_load.return_value = mock_config
         mock_backend = MagicMock()
-        mock_backend.get_current.return_value = _fake_current()
         mock_backend.get_hourly.return_value = _fake_hourly()
         mock_get_backend.return_value = mock_backend
 
-        result = runner.invoke(main, ["-f", "json", "now"])
+        result = runner.invoke(main, ["-f", "json", "hourly"])
         assert result.exit_code == 0
         assert "18" in result.output
 

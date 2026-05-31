@@ -5,3 +5,4 @@ dist/
 build/
 .eggs/
 .coverage
+docs/.DS_Store
