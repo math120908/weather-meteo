@@ -5,7 +5,7 @@ import click
 from weather_meteo.api import get_backend
 from weather_meteo.config import Config, load_config, save_config, edit_config, CONFIG_FILE
 from weather_meteo.formatters import get_formatter
-from weather_meteo.location import detect_current_location, resolve_location
+from weather_meteo.location import detect_current_location, geocode_search, resolve_location
 from weather_meteo.models import FORECAST_MODELS
 
 
@@ -75,41 +75,23 @@ def main(
     ctx.obj["format"] = fmt
     ctx.obj["models"] = models
     if ctx.invoked_subcommand is None:
-        ctx.invoke(now)
+        ctx.invoke(hourly)
 
 
 @main.command()
+@click.option("--hours", "-H", default=24, help="Hours to show (default 24).")
 @click.pass_context
-def now(ctx: click.Context) -> None:
-    """Current weather + 24h forecast (default command)."""
-    models = ctx.obj.get("models", [])
-    config, formatter, backend = _resolve(ctx, ctx.obj["location"])
-    loc = resolve_location(ctx.obj["location"], config)
-    current = backend.get_current(loc)
-    current.location_label = loc.label
-    if len(models) > 1:
-        model_data = _fetch_multi_model_hourly(config, loc, models, hours=24)
-        click.echo(formatter.format_now(current, unit=config.unit))
-        click.echo()
-        click.echo(formatter.format_model_compare(model_data, loc.label, unit=config.unit, hours=24))
-    else:
-        hourly = backend.get_hourly(loc, hours=24)
-        click.echo(formatter.format_now(current, unit=config.unit, hourly=hourly))
-
-
-@main.command()
-@click.pass_context
-def hourly(ctx: click.Context) -> None:
-    """Next 24 hours hourly forecast."""
+def hourly(ctx: click.Context, hours: int) -> None:
+    """Hourly forecast (default command)."""
     models = ctx.obj.get("models", [])
     config, formatter, backend = _resolve(ctx, ctx.obj["location"])
     loc = resolve_location(ctx.obj["location"], config)
     if len(models) > 1:
-        model_data = _fetch_multi_model_hourly(config, loc, models, hours=24)
-        click.echo(formatter.format_model_compare(model_data, loc.label, unit=config.unit, hours=24))
+        model_data = _fetch_multi_model_hourly(config, loc, models, hours=hours)
+        click.echo(formatter.format_model_compare(model_data, loc.label, unit=config.unit, hours=hours))
     else:
-        entries = backend.get_hourly(loc, hours=24)
-        click.echo(formatter.format_hourly(entries, loc.label, title="Next 24h", unit=config.unit))
+        entries = backend.get_hourly(loc, hours=hours)
+        click.echo(formatter.format_hourly(entries, loc.label, title=f"Next {hours}h", unit=config.unit))
 
 
 @main.command()
@@ -121,24 +103,6 @@ def week(ctx: click.Context, detail: bool) -> None:
     loc = resolve_location(ctx.obj["location"], config)
     daily = backend.get_daily(loc, days=7, detail=detail)
     click.echo(formatter.format_week(daily, loc.label, unit=config.unit, detail=detail))
-
-
-@main.command()
-@click.option("--hours", "-H", default=6, help="Hours to show (default 6).")
-@click.pass_context
-def run(ctx: click.Context, hours: int) -> None:
-    """Run check: weather for next N hours."""
-    models = ctx.obj.get("models", [])
-    config, formatter, backend = _resolve(ctx, ctx.obj["location"])
-    loc = resolve_location(ctx.obj["location"], config)
-    if len(models) > 1:
-        model_data = _fetch_multi_model_hourly(config, loc, models, hours=hours)
-        click.echo(formatter.format_model_compare(model_data, loc.label, unit=config.unit, hours=hours))
-    else:
-        entries = backend.get_hourly(loc, hours=hours)
-        click.echo(formatter.format_hourly(
-            entries, loc.label, title=f"Run Check (next {hours}h)", unit=config.unit,
-        ))
 
 
 @main.command()
@@ -225,6 +189,51 @@ def setup() -> None:
     )
     save_config(cfg)
     click.echo(f"Config saved to {CONFIG_FILE}")
+
+
+@config_cmd.command()
+@click.option("--name", "-n", required=True, help="Alias for this location.")
+@click.argument("query")
+def add(name: str, query: str) -> None:
+    """Add a location by searching. Example: config add --name home "dublin 2" """
+    config = load_config()
+
+    # Check for existing alias
+    if name in config.locations:
+        existing = config.locations[name]
+        if not click.confirm(
+            f"'{name}' already exists ({existing.label}). Overwrite?",
+            default=False,
+        ):
+            click.echo("Aborted.")
+            return
+
+    # Search for locations
+    click.echo(f"Searching for '{query}'...")
+    results = geocode_search(query, count=5)
+    if not results:
+        raise click.ClickException(f"No locations found for: {query!r}")
+
+    # Display results
+    click.echo()
+    for i, loc in enumerate(results, 1):
+        map_url = f"https://www.google.com/maps?q={loc.lat},{loc.lon}"
+        click.echo(f"  [{i}] {loc.label} ({loc.lat}, {loc.lon})")
+        click.echo(f"      {map_url}")
+    click.echo()
+
+    # Prompt for selection
+    choice = click.prompt(
+        "Select",
+        type=click.IntRange(1, len(results)),
+        default=1,
+    )
+    selected = results[choice - 1]
+
+    # Save
+    config.locations[name] = selected
+    save_config(config)
+    click.echo(f"Added '{name}' -> {selected.label} ({selected.lat}, {selected.lon})")
 
 
 @config_cmd.command()
