@@ -62,6 +62,11 @@ def format_now(
     return "\n".join(lines)
 
 
+def _vis_km(meters: float) -> str:
+    km = meters / 1000
+    return f"{km:.0f}km" if km >= 10 else f"{km:.1f}km"
+
+
 def format_hourly(
     entries: list[HourlyEntry],
     location_label: str,
@@ -71,16 +76,33 @@ def format_hourly(
     show_prob: bool = True,
 ) -> str:
     t_suf, w_suf = _unit_suffix(unit)
+    full = entries and entries[0].humidity is not None
+    has_prob = entries and entries[0].precipitation_probability >= 0
+    has_uv = full and any(e.uv_index is not None for e in entries)
+    has_vis = full and any(e.visibility is not None for e in entries)
+
     lines = [f"\U0001f4cd {location_label} \u2014 {title}", ""]
     for e in entries:
         arrow = wind_arrow(e.wind_direction)
         time_str = e.time.strftime("%H:%M")
-        prob = f"\u2614{e.precipitation_probability}%" if e.precipitation_probability >= 0 else ""
-        lines.append(
-            f"  {time_str} \U0001f321\ufe0f{e.temperature:.0f}{t_suf} "
-            f"\U0001f4a8{arrow}{e.wind_speed:.0f}{w_suf} "
-            f"{prob}"
-        )
+        parts = [
+            f"  {time_str}",
+            f"\U0001f321\ufe0f{e.temperature:.0f}{t_suf}",
+            f"\U0001f4a8{arrow}{e.wind_speed:.0f}{w_suf}",
+        ]
+        if has_prob:
+            parts.append(f"\u2614{e.precipitation_probability}%")
+        if full:
+            parts.append(f"\U0001f4a6{e.humidity}%")
+            if has_uv:
+                uv = f"{e.uv_index:.0f}" if e.uv_index is not None else "-"
+                parts.append(f"\u2600\ufe0f{uv}")
+            parts.append(f"\u2601\ufe0f{e.cloud_cover}%" if e.cloud_cover is not None else "")
+            parts.append(f"\U0001f9ed{e.pressure:.0f}hPa" if e.pressure is not None else "")
+            parts.append(f"\U0001f4a7{e.dewpoint:.0f}{t_suf}" if e.dewpoint is not None else "")
+            if has_vis:
+                parts.append(f"\U0001f441\ufe0f{_vis_km(e.visibility)}" if e.visibility is not None else "")
+        lines.append(" ".join(p for p in parts if p))
     return "\n".join(lines)
 
 
@@ -91,16 +113,24 @@ def format_week(
     detail: bool = False,
 ) -> str:
     t_suf, w_suf = _unit_suffix(unit)
+    full = daily and daily[0].sunrise is not None
     lines = [f"\U0001f4cd {location_label} \u2014 7-Day", ""]
     for d in daily:
         date_str = d.date.strftime("%a %d")
         spark = "".join(rain_spark_char(h.precipitation_probability) for h in d.hourly) if d.hourly else ""
-        lines.append(
-            f"  {date_str} \U0001f321\ufe0f{d.temp_max:.0f}/{d.temp_min:.0f}{t_suf} "
-            f"\U0001f4a8{d.wind_speed_max:.0f}{w_suf} "
-            f"\u2614{d.precipitation_probability_max}% "
-            f"{spark}"
-        )
+        parts = [
+            f"  {date_str}",
+            f"\U0001f321\ufe0f{d.temp_max:.0f}/{d.temp_min:.0f}{t_suf}",
+            f"\U0001f4a8{d.wind_speed_max:.0f}{w_suf}",
+            f"\u2614{d.precipitation_probability_max}%",
+        ]
+        if full:
+            if d.uv_index_max is not None:
+                parts.append(f"\u2600\ufe0f{d.uv_index_max:.0f}")
+            if d.sunrise and d.sunset:
+                parts.append(f"\U0001f305{d.sunrise.strftime('%H:%M')}-{d.sunset.strftime('%H:%M')}")
+        parts.append(spark)
+        lines.append(" ".join(p for p in parts if p))
     return "\n".join(lines)
 
 
