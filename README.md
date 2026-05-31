@@ -2,6 +2,10 @@
 
 CLI weather tool powered by [Open-Meteo](https://open-meteo.com/). Free, no API key required.
 
+## Demo
+
+![weather-meteo demo](docs/demo/demo.gif)
+
 ## Install
 
 ```bash
