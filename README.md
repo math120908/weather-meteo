@@ -19,7 +19,9 @@ pip install -e .
 weather-meteo config setup                   # interactive first-time setup
 weather-meteo                                # next 24h hourly forecast (default)
 weather-meteo hourly -H 6                    # next 6h only
+weather-meteo --full                         # extended data (humidity, UV, pressure, ...)
 weather-meteo week                           # 7-day forecast with rain heatmap
+weather-meteo --full week                    # 7-day + UV index + sunrise/sunset
 weather-meteo week --detail                  # 7-day with full hourly breakdown
 weather-meteo compare sandymount taipei      # multi-location comparison
 weather-meteo history --date 2026-05-01      # historical weather
@@ -32,6 +34,7 @@ weather-meteo history --date 2026-05-01      # historical weather
 | `--location LOC` | `-l` | Location alias or city name |
 | `--format FMT` | `-f` | `ascii` (default), `emoji`, `json` |
 | `--hours N` | `-H` | Hour range for `hourly` (default 24) |
+| `--full` | | Extended data: humidity, UV, cloud, pressure, dewpoint, visibility |
 
 ## Config
 

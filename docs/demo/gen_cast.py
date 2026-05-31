@@ -7,8 +7,8 @@ import pty
 import subprocess
 import time
 
-WIDTH = 100
-HEIGHT = 35
+WIDTH = 130
+HEIGHT = 40
 PROMPT = "$ "
 
 
@@ -131,14 +131,14 @@ def main():
     w.show_output(out2)
     w.pause(2.5)
 
-    # ── Command 3: weather-meteo hourly -H 6 ─────────────────────────────────
+    # ── Command 3: weather-meteo --full hourly -H 6 ──────────────────────────
     w._emit(PROMPT)
     w.pause(0.4)
-    w.type_text("weather-meteo hourly -H 6")
+    w.type_text("weather-meteo --full hourly -H 6")
     w.newline()
     w.pause(0.5)
 
-    out3 = run_cmd("weather-meteo hourly -H 6")
+    out3 = run_cmd("weather-meteo --full hourly -H 6")
     w.show_output(out3)
     w.pause(2.5)
 
