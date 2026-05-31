@@ -5,7 +5,8 @@ CLI weather tool powered by [Open-Meteo](https://open-meteo.com/). Free, no API 
 ## Install
 
 ```bash
-pip install -e ~/project/weather-meteo
+git clone https://github.com/math120908/weather-meteo.git
+pip install -e .
 ```
 
 ## Quick Start

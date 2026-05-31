@@ -106,43 +106,57 @@ def format_now(
 
     parts = [_render_rich(panel)]
 
-    # 24h forecast table
     if hourly:
-        table = Table(
-            title="Next 24h",
-            title_style="bold",
-            border_style="dim",
-            show_header=True,
-            header_style="bold dim",
-            pad_edge=False,
-            width=60,
-        )
-        table.add_column("Time", style="dim", width=5)
-        table.add_column("Temp", justify="right", width=5)
-        table.add_column("Wind", width=10)
-        table.add_column("Rain", justify="right", width=6)
-        table.add_column("Prob", justify="right", width=4)
-        table.add_column("", width=10)
-
-        for e in hourly:
-            earrow = wind_arrow(e.wind_direction)
-            tc = _temp_color(e.temperature)
-            pc = _prob_color(e.precipitation_probability)
-            wc = _wind_color(e.wind_speed)
-            bar = _prob_bar(e.precipitation_probability)
-
-            table.add_row(
-                e.time.strftime("%H:%M"),
-                Text(f"{e.temperature:.0f}{t_suf}", style=tc),
-                Text(f"{earrow} {e.wind_speed:.0f}{w_suf}", style=wc),
-                Text(f"{e.precipitation:.1f}mm", style="blue" if e.precipitation > 0 else "dim"),
-                Text(f"{e.precipitation_probability}%", style=pc),
-                Text(bar, style=pc),
-            )
-
-        parts.append(_render_rich(table))
+        parts.append(_build_hourly_table(hourly, "Next 24h", t_suf, w_suf))
 
     return "\n".join(parts)
+
+
+def _build_hourly_table(
+    entries: list[HourlyEntry],
+    title: str,
+    t_suf: str,
+    w_suf: str,
+) -> str:
+    table = Table(
+        title=title,
+        title_style="bold",
+        border_style="dim",
+        show_header=True,
+        header_style="bold dim",
+        pad_edge=False,
+        width=60,
+    )
+    table.add_column("Time", style="dim", width=5)
+    table.add_column("Temp", justify="right", width=5)
+    table.add_column("Wind", width=10)
+    table.add_column("Rain", justify="right", width=6)
+    table.add_column("Prob", justify="right", width=4)
+    table.add_column("", width=10)
+
+    for e in entries:
+        earrow = wind_arrow(e.wind_direction)
+        tc = _temp_color(e.temperature)
+        wc = _wind_color(e.wind_speed)
+
+        if e.precipitation_probability < 0:
+            prob_text = Text("-", style="dim")
+            bar_text = Text("")
+        else:
+            pc = _prob_color(e.precipitation_probability)
+            prob_text = Text(f"{e.precipitation_probability}%", style=pc)
+            bar_text = Text(_prob_bar(e.precipitation_probability), style=pc)
+
+        table.add_row(
+            e.time.strftime("%H:%M"),
+            Text(f"{e.temperature:.0f}{t_suf}", style=tc),
+            Text(f"{earrow} {e.wind_speed:.0f}{w_suf}", style=wc),
+            Text(f"{e.precipitation:.1f}mm", style="blue" if e.precipitation > 0 else "dim"),
+            prob_text,
+            bar_text,
+        )
+
+    return _render_rich(table)
 
 
 def format_model_compare(
@@ -203,35 +217,17 @@ def format_hourly(
     show_prob: bool = True,
 ) -> str:
     t_suf, w_suf = _unit_suffix(unit)
-    lines = [
-        f"  {location_label} \u2014 {title}",
-        "",
-    ]
-    if show_rain_col and show_prob:
-        lines.append("  Time   Temp  Wind       Rain   Prob")
-    elif show_prob:
-        lines.append("  Time   Temp  Wind       Prob")
-    else:
-        lines.append("  Time   Temp  Wind       Rain")
-    lines.append("  " + "\u2500" * 44)
+    full_title = f"{location_label} \u2014 {title}"
+    return _build_hourly_table(entries, full_title, t_suf, w_suf)
 
-    for e in entries:
-        arrow = wind_arrow(e.wind_direction)
-        time_str = e.time.strftime("%H:%M")
-        temp_str = f"{e.temperature:.0f}{t_suf}"
-        wind_str = f"{arrow} {e.wind_speed:>2.0f}{w_suf}"
-        parts = [f"  {time_str}  {temp_str:>5}  {wind_str:>9}"]
-        if show_rain_col:
-            parts.append(f"{e.precipitation:>5.1f}mm")
-        if show_prob:
-            if e.precipitation_probability < 0:
-                parts.append("   -")
-            else:
-                bar = _prob_bar(e.precipitation_probability)
-                parts.append(f"{e.precipitation_probability:>4}% {bar}")
-        lines.append("  ".join(parts))
 
-    return "\n".join(lines)
+def _colored_sparkline(hourly: list[HourlyEntry]) -> Text:
+    spark = Text()
+    for h in hourly:
+        char = rain_spark_char(h.precipitation_probability)
+        color = _prob_color(h.precipitation_probability)
+        spark.append(char, style=color)
+    return spark
 
 
 def format_week(
@@ -241,39 +237,59 @@ def format_week(
     detail: bool = False,
 ) -> str:
     t_suf, w_suf = _unit_suffix(unit)
-    lines = [
-        f"  {location_label} \u2014 7-Day Forecast",
-        "",
-        "  Date        Hi/Lo    Wind     Rain   Prob",
-        "  " + "\u2500" * 50,
-    ]
+
+    if detail:
+        # Detail mode: summary table then per-day hourly tables
+        parts = []
+        for d in daily:
+            date_str = d.date.strftime("%a %d %b")
+            title = f"{date_str}  {d.temp_max:.0f}/{d.temp_min:.0f}{t_suf}"
+            if d.hourly:
+                parts.append(_build_hourly_table(d.hourly, title, t_suf, w_suf))
+            else:
+                parts.append(title)
+        return "\n\n".join(parts)
+
+    table = Table(
+        title=f"{location_label} \u2014 7-Day Forecast",
+        title_style="bold",
+        border_style="dim",
+        show_header=True,
+        header_style="bold dim",
+        pad_edge=False,
+        width=80,
+    )
+    table.add_column("Date", style="dim", no_wrap=True)
+    table.add_column("Hi/Lo", justify="right", no_wrap=True)
+    table.add_column("Wind", justify="right", no_wrap=True)
+    table.add_column("Rain", justify="right", no_wrap=True)
+    table.add_column("Prob", justify="right", no_wrap=True)
+    table.add_column("Hourly Rain", no_wrap=True, min_width=24)
 
     for d in daily:
         date_str = d.date.strftime("%a %d %b")
-        hi_lo = f"{d.temp_max:.0f}/{d.temp_min:.0f}{t_suf}"
-        wind = f"{d.wind_speed_max:.0f}{w_suf}"
-        rain = f"{d.precipitation_sum:.1f}mm"
-        prob = f"{d.precipitation_probability_max}%"
-        lines.append(f"  {date_str:>10}  {hi_lo:>8}  {wind:>6}  {rain:>5}  {prob:>4}")
+        tc_hi = _temp_color(d.temp_max)
+        tc_lo = _temp_color(d.temp_min)
+        hi_lo = Text()
+        hi_lo.append(f"{d.temp_max:.0f}", style=tc_hi)
+        hi_lo.append("/")
+        hi_lo.append(f"{d.temp_min:.0f}{t_suf}", style=tc_lo)
 
-        if detail and d.hourly:
-            for h in d.hourly:
-                time_str = h.time.strftime("%H:%M")
-                harrow = wind_arrow(h.wind_direction)
-                bar = _prob_bar(h.precipitation_probability)
-                lines.append(
-                    f"    {time_str}  {h.temperature:.0f}{t_suf}  "
-                    f"{harrow} {h.wind_speed:.0f}{w_suf}  "
-                    f"{h.precipitation:.1f}mm  {h.precipitation_probability}% {bar}"
-                )
-            lines.append("")
-        elif d.hourly:
-            sparkline = "".join(rain_spark_char(h.precipitation_probability) for h in d.hourly)
-            lines.append(f"  rain: {sparkline}")
-            lines.append("        0         6        12        18")
-            lines.append("")
+        wc = _wind_color(d.wind_speed_max)
+        pc = _prob_color(d.precipitation_probability_max)
 
-    return "\n".join(lines)
+        spark = _colored_sparkline(d.hourly) if d.hourly else Text("")
+
+        table.add_row(
+            date_str,
+            hi_lo,
+            Text(f"{d.wind_speed_max:.0f}{w_suf}", style=wc),
+            Text(f"{d.precipitation_sum:.1f}mm", style="blue" if d.precipitation_sum > 0 else "dim"),
+            Text(f"{d.precipitation_probability_max}%", style=pc),
+            spark,
+        )
+
+    return _render_rich(table)
 
 
 def format_compare(
