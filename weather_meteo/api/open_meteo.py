@@ -89,7 +89,15 @@ class OpenMeteoBackend(WeatherBackend):
             ))
         return entries
 
-    def get_daily(self, location: LocationEntry, days: int = 7) -> list[DailyEntry]:
+    def get_daily(self, location: LocationEntry, days: int = 7, detail: bool = False) -> list[DailyEntry]:
+        hourly_fields = ["precipitation_probability"]
+        if detail:
+            hourly_fields += [
+                "temperature_2m",
+                "wind_speed_10m",
+                "wind_direction_10m",
+                "precipitation",
+            ]
         data = self._get(FORECAST_URL, {
             "latitude": location.lat,
             "longitude": location.lon,
@@ -101,12 +109,17 @@ class OpenMeteoBackend(WeatherBackend):
                 "wind_speed_10m_max",
                 "wind_gusts_10m_max",
             ]),
-            "hourly": "precipitation_probability",
+            "hourly": ",".join(hourly_fields),
             "forecast_days": days,
         })
         d = data["daily"]
-        hourly_probs = data.get("hourly", {}).get("precipitation_probability", [])
-        hourly_times = data.get("hourly", {}).get("time", [])
+        h = data.get("hourly", {})
+        hourly_probs = h.get("precipitation_probability", [])
+        hourly_times = h.get("time", [])
+        hourly_temps = h.get("temperature_2m", [])
+        hourly_winds = h.get("wind_speed_10m", [])
+        hourly_dirs = h.get("wind_direction_10m", [])
+        hourly_precip = h.get("precipitation", [])
 
         entries = []
         for i in range(len(d["time"])):
@@ -117,10 +130,10 @@ class OpenMeteoBackend(WeatherBackend):
                 if t.date() == day_date and j < len(hourly_probs):
                     day_hourly.append(HourlyEntry(
                         time=t,
-                        temperature=0,
-                        wind_speed=0,
-                        wind_direction=0,
-                        precipitation=0,
+                        temperature=hourly_temps[j] if hourly_temps else 0,
+                        wind_speed=hourly_winds[j] if hourly_winds else 0,
+                        wind_direction=int(hourly_dirs[j]) if hourly_dirs else 0,
+                        precipitation=hourly_precip[j] if hourly_precip else 0,
                         precipitation_probability=int(hourly_probs[j]),
                     ))
             entries.append(DailyEntry(

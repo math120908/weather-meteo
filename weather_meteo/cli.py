@@ -59,7 +59,7 @@ def week(ctx: click.Context, detail: bool) -> None:
     """7-day forecast with rain heatmap."""
     config, formatter, backend = _resolve(ctx)
     loc = resolve_location(ctx.obj["location"], config)
-    daily = backend.get_daily(loc, days=7)
+    daily = backend.get_daily(loc, days=7, detail=detail)
     click.echo(formatter.format_week(daily, loc.label, unit=config.unit, detail=detail))
 
 
